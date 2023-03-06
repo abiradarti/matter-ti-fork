@@ -37,6 +37,8 @@ chip_automation_logging = true
 # INCLUDE_xSemaphoreGetMutexHolder
 chip_stack_lock_tracking = "none"
 
+chip_enable_ota_requestor = true
+
 matter_device_vid = "0xFFF1"
 matter_device_pid = "0x8006"
 matter_software_ver = "0x0001"
