@@ -22,19 +22,70 @@
 
 #include "OTAImageProcessorImpl.h"
 
-// #include <ti/common/cc26xx/flash_interface/flash_interface.h>
-// #include <ti/common/cc26xx/oad/ext_flash_layout.h>
+#include <ti/net/ota/ota.h>
+
+#include <ti/net/ota/source/OtaArchive.h>
+
+#include <ti/drivers/power/PowerCC32XX.h>
+
+#include <ti/drivers/net/wifi/fs.h>
+
+#include "ota_settings.h"
 
 #include <ti_drivers_config.h>
 
-// clang-format off
-/* driverlib header for resetting the SoC */
-#include <ti/devices/DeviceFamily.h>
-#include DeviceFamily_constructPath(driverlib/sys_ctrl.h)
-// clang-format on
 
 using namespace chip::DeviceLayer;
 using namespace chip::DeviceLayer::PersistedStorage;
+
+#define OTA_VERSION_LEN 14
+#define OTA_BUFF_SIZE 1024
+
+// static struct
+// {
+//     int                 state;
+//     uint32_t            flags;
+//     ota_eventCallback_f fAppCallback;
+//     uint32_t            localDevType;
+//     uint8_t             localMacAddress[SL_MAC_ADDR_LEN];
+//     char                localNetworkSSID[32];
+//     SlNetCfgIpV4Args_t  localIpInfo;
+
+//     workQ_t             hWQ;
+//     char                *pVersion;
+//     char                newVersion[VERSION_STR_SIZE+1];
+//     uint32_t            commitWatchdogTimeout;
+
+//     void *              hSession;
+//     OtaArchive_t        hOtaArchive;
+
+//     OtaCounters_t       counters;
+//     OtaIfType_e         type;
+//     unsigned int        nImageLen;
+//     uint32_t            nTotalRead;
+
+//     OtaIfStatus         status;
+//     uint8_t             progressPercent;
+
+//     union
+//     {
+//         FileServerParams_t  fileServerParams;
+//         TarFileParams_t     tarFileParams;
+//         HTTPSRV_IF_params_t httpServerParams;
+//         uint8_t             buff[OTA_BUFF_SIZE];
+//     };
+// } m_ota = { 0 };
+
+OtaArchive_t        hOtaArchive;
+uint32_t totalFileBytes;
+
+
+extern "C" {
+int FILE_write(char * pFilename, uint16_t length, uint8_t * pValue, uint32_t * pToken, uint32_t flags);
+int FILE_read(int8_t * pFilename, uint16_t length, uint8_t * pValue, uint32_t token);
+};
+
+extern "C" void cc32xxLog(const char * aFormat, ...);
 
 namespace chip {
 
@@ -64,23 +115,17 @@ CHIP_ERROR OTAImageProcessorImpl::Abort()
 
 CHIP_ERROR OTAImageProcessorImpl::ProcessBlock(ByteSpan & block)
 {
-    // if (nullptr == mNvsHandle)
-    // {
-    //     return CHIP_ERROR_INTERNAL;
-    // }
+     if ((nullptr == block.data()) || block.empty())
+    {
+        return CHIP_ERROR_INVALID_ARGUMENT;
+    }
 
-    // if ((nullptr == block.data()) || block.empty())
-    // {
-    //     return CHIP_ERROR_INVALID_ARGUMENT;
-    // }
-
-    // // Store block data for HandleProcessBlock to access
-    // CHIP_ERROR err = SetBlock(block);
-    // if (err != CHIP_NO_ERROR)
-    // {
-    //     ChipLogError(SoftwareUpdate, "Cannot set block data: %" CHIP_ERROR_FORMAT, err.Format());
-    // }
-
+    // Store block data for HandleProcessBlock to access
+    CHIP_ERROR err = SetBlock(block);
+    if (err != CHIP_NO_ERROR)
+    {
+        ChipLogError(SoftwareUpdate, "Cannot set block data: %" CHIP_ERROR_FORMAT, err.Format());
+    }
     PlatformMgr().ScheduleWork(HandleProcessBlock, reinterpret_cast<intptr_t>(this));
     return CHIP_NO_ERROR;
 }
@@ -101,290 +146,62 @@ bool OTAImageProcessorImpl::IsFirstImageRun()
         (requestor->GetCurrentUpdateState() == chip::app::Clusters::OtaSoftwareUpdateRequestor::OTAUpdateStateEnum::kApplying);
 }
 
-/* DESIGN NOTE: The Boot Image Manager will search external flash for an
- * `ExtImageInfo_t` structure every 4K for 1M. This structure points to where
- * the executable image is in external flash with a uint32_t. It is possible to
- * have multiple images ready to be programmed into the internal flash of the
- * device. This design is only concerned with managing 1 image in external
- * flash starting at `IMG_START` and being defined by a meta header at address
- * 0. Future designs may be able to take advantage of other images for rollback
- * functionality, however this will require a larger external flash chip.
- */
 
-#define IMG_START (4 * EFL_SIZE_META)
+CHIP_ERROR OTAImageProcessorImpl::ConfirmCurrentImage(){
 
-// static bool readExtFlashImgHeader(NVS_Handle handle, imgFixedHdr_t * header, size_t otaHeaderLen)
-// {
-//     int_fast16_t status;
-//     status = NVS_read(handle, IMG_START + otaHeaderLen, header, sizeof(imgFixedHdr_t));
-//     return (status == NVS_STATUS_SUCCESS);
-// }
-
-// /* makes room for the new block if needed */
-// static bool writeExtFlashImgPages(NVS_Handle handle, size_t bytesWritten, MutableByteSpan block)
-// {
-//     int_fast16_t status;
-//     NVS_Attrs regionAttrs;
-//     unsigned int erasedSectors;
-//     unsigned int neededSectors;
-//     size_t sectorSize;
-
-//     NVS_getAttrs(handle, &regionAttrs);
-//     sectorSize    = regionAttrs.sectorSize;
-//     erasedSectors = (bytesWritten + (sectorSize - 1)) / sectorSize;
-//     neededSectors = ((bytesWritten + block.size()) + (sectorSize - 1)) / sectorSize;
-//     if (neededSectors != erasedSectors)
-//     {
-//         status = NVS_erase(handle, IMG_START + (erasedSectors * sectorSize), (neededSectors - erasedSectors) * sectorSize);
-//         if (status != NVS_STATUS_SUCCESS)
-//         {
-//             ChipLogError(SoftwareUpdate, "NVS_erase failed status: %d", status);
-//             return false;
-//         }
-//     }
-//     status = NVS_write(handle, IMG_START + bytesWritten, block.data(), block.size(), NVS_WRITE_POST_VERIFY);
-//     if (status != NVS_STATUS_SUCCESS)
-//     {
-//         ChipLogError(SoftwareUpdate, "NVS_write failed status: %d", status);
-//         return false;
-//     }
-//     return true;
-// }
-
-// static bool readExtFlashMetaHeader(NVS_Handle handle, ExtImageInfo_t * header)
-// {
-//     int_fast16_t status;
-//     status = NVS_read(handle, EFL_ADDR_META, header, sizeof(ExtImageInfo_t));
-//     return (status == NVS_STATUS_SUCCESS);
-// }
-
-// static bool eraseExtFlashMetaHeader(NVS_Handle handle)
-// {
-//     int_fast16_t status;
-//     NVS_Attrs regionAttrs;
-//     unsigned int sectors;
-
-//     NVS_getAttrs(handle, &regionAttrs);
-//     /* calculate the number of sectors to erase */
-//     sectors = (sizeof(ExtImageInfo_t) + (regionAttrs.sectorSize - 1)) / regionAttrs.sectorSize;
-//     status  = NVS_erase(handle, EFL_ADDR_META, sectors * regionAttrs.sectorSize);
-
-//     return (status == NVS_STATUS_SUCCESS);
-// }
-
-// static bool writeExtFlashMetaHeader(NVS_Handle handle, ExtImageInfo_t * header)
-// {
-//     int_fast16_t status;
-//     if (!eraseExtFlashMetaHeader(handle))
-//     {
-//         return false;
-//     }
-//     status = NVS_write(handle, EFL_ADDR_META, header, sizeof(ExtImageInfo_t), NVS_WRITE_POST_VERIFY);
-//     return (status == NVS_STATUS_SUCCESS);
-// }
-
-// /**
-//  * Generated on by pycrc v0.9.2, https://pycrc.org using the configuration:
-//  *  - Width         = 32
-//  *  - Poly          = 0x04c11db7
-//  *  - XorIn         = 0xffffffff
-//  *  - ReflectIn     = True
-//  *  - XorOut        = 0xffffffff
-//  *  - ReflectOut    = True
-//  *  - Algorithm     = bit-by-bit-fast
-//  *
-//  * Modified to take uint32_t as the CRC type
-//  */
-// uint32_t crc_reflect(uint32_t data, size_t data_len)
-// {
-//     unsigned int i;
-//     uint32_t ret;
-
-//     ret = data & 0x01;
-//     for (i = 1; i < data_len; i++)
-//     {
-//         data >>= 1;
-//         ret = (ret << 1) | (data & 0x01);
-//     }
-//     return ret;
-// }
-
-// uint32_t crc_update(uint32_t crc, const void * data, size_t data_len)
-// {
-//     const unsigned char * d = (const unsigned char *) data;
-//     unsigned int i;
-//     bool bit;
-//     unsigned char c;
-
-//     while (data_len--)
-//     {
-//         c = *d++;
-//         for (i = 0x01; i & 0xff; i <<= 1)
-//         {
-//             bit = crc & 0x80000000;
-//             if (c & i)
-//             {
-//                 bit = !bit;
-//             }
-//             crc <<= 1;
-//             if (bit)
-//             {
-//                 crc ^= 0x04c11db7;
-//             }
-//         }
-//         crc &= 0xffffffff;
-//     }
-//     return crc & 0xffffffff;
-// }
-
-// static bool validateExtFlashImage(NVS_Handle handle, size_t otaHeaderLen)
-// {
-//     uint32_t crc;
-//     imgFixedHdr_t header;
-//     size_t addr, endAddr;
-
-//     if (!readExtFlashImgHeader(handle, &header, otaHeaderLen))
-//     {
-//         return false;
-//     }
-
-//     /* CRC is calculated after the CRC element of the image header */
-//     addr    = IMG_START + otaHeaderLen + IMG_DATA_OFFSET;
-//     endAddr = IMG_START + otaHeaderLen + header.len;
-
-//     crc = 0xFFFFFFFF;
-
-//     while (addr < endAddr)
-//     {
-//         uint8_t buffer[32];
-//         size_t bytesLeft = endAddr - addr;
-//         size_t toRead    = (sizeof(buffer) < bytesLeft) ? sizeof(buffer) : bytesLeft;
-
-//         if (NVS_STATUS_SUCCESS != NVS_read(handle, addr, buffer, toRead))
-//         {
-//             return false;
-//         }
-
-//         crc = crc_update(crc, buffer, toRead);
-
-//         addr += toRead;
-//     }
-
-//     crc = crc_reflect(crc, 32) ^ 0xffffffff;
-
-//     return (crc == header.crc32);
-// }
-
-CHIP_ERROR OTAImageProcessorImpl::ConfirmCurrentImage()
-{
-    // NVS_Handle handle;
-    // NVS_Params nvsParams;
-    // NVS_Params_init(&nvsParams);
-    // handle = NVS_open(CONFIG_NVSEXTERNAL, &nvsParams);
-
-    // if (NULL != handle)
-    // {
-    //     eraseExtFlashMetaHeader(handle);
-    //     NVS_close(handle);
-    //     return CHIP_NO_ERROR;
-    // }
-    // return CHIP_NO_ERROR;
+    int rc = OtaArchive_commit();
+    if(rc == 0)
+    {
+        PowerCC32XX_reset(PowerCC32XX_PERIPH_WDT);
+        return CHIP_NO_ERROR;
+    }
+    return CHIP_NO_ERROR;
 }
 
 void OTAImageProcessorImpl::HandlePrepareDownload(intptr_t context)
 {
-    // auto * imageProcessor = reinterpret_cast<OTAImageProcessorImpl *>(context);
-    // if (imageProcessor == nullptr)
-    // {
-    //     ChipLogError(SoftwareUpdate, "ImageProcessor context is null");
-    //     return;
-    // }
-    // else if (imageProcessor->mDownloader == nullptr)
-    // {
-    //     ChipLogError(SoftwareUpdate, "mDownloader is null");
-    //     return;
-    // }
+    auto * imageProcessor = reinterpret_cast<OTAImageProcessorImpl *>(context);
+    if (imageProcessor == nullptr)
+    {
+        ChipLogError(SoftwareUpdate, "ImageProcessor context is null");
+        return;
+    }
+    else if (imageProcessor->mDownloader == nullptr)
+    {
+        ChipLogError(SoftwareUpdate, "mDownloader is null");
+        return;
+    }
 
-    // if (NULL == imageProcessor->mNvsHandle)
-    // {
-    //     NVS_Params nvsParams;
-    //     NVS_Params_init(&nvsParams);
-    //     imageProcessor->mNvsHandle = NVS_open(CONFIG_NVSEXTERNAL, &nvsParams);
+    imageProcessor->mHeaderParser.Init();
 
-    //     if (NULL == imageProcessor->mNvsHandle)
-    //     {
-    //         imageProcessor->mDownloader->OnPreparedForDownload(CHIP_ERROR_OPEN_FAILED);
-    //         return;
-    //     }
-    // }
+    OtaArchive_init(&hOtaArchive);
 
-    // if (!eraseExtFlashMetaHeader(imageProcessor->mNvsHandle))
-    // {
-    //     NVS_close(imageProcessor->mNvsHandle);
-    //     imageProcessor->mDownloader->OnPreparedForDownload(CHIP_ERROR_WRITE_FAILED);
-    //     return;
-    // }
-
-    // imageProcessor->mDownloader->OnPreparedForDownload(CHIP_NO_ERROR);
 }
 
 void OTAImageProcessorImpl::HandleFinalize(intptr_t context)
 {
-    ExtImageInfo_t header;
-    auto * imageProcessor    = reinterpret_cast<OTAImageProcessorImpl *>(context);
-    const uint8_t extImgId[] = OAD_EFL_MAGIC;
-
+    auto * imageProcessor = reinterpret_cast<OTAImageProcessorImpl *>(context);
     if (imageProcessor == nullptr)
     {
         return;
     }
-
-    // if (!readExtFlashImgHeader(imageProcessor->mNvsHandle, &(header.fixedHdr),
-    //                            imageProcessor->mFixedOtaHeader.headerSize + sizeof(imageProcessor->mFixedOtaHeader)))
-    // {
-    //     return;
-    // }
-    // // offset in the size of the fixed and variable OTA image headers
-    // memcpy(&(header.fixedHdr.imgID), extImgId, sizeof(header.fixedHdr.imgID));
-    // header.extFlAddr = IMG_START + imageProcessor->mFixedOtaHeader.headerSize + sizeof(imageProcessor->mFixedOtaHeader);
-    // header.counter   = 0x0;
-
-    // if (validateExtFlashImage(imageProcessor->mNvsHandle,
-    //                           imageProcessor->mFixedOtaHeader.headerSize + sizeof(imageProcessor->mFixedOtaHeader)))
-    // {
-    //     // only write the meta header if the crc check passes
-    //     writeExtFlashMetaHeader(imageProcessor->mNvsHandle, &header);
-    // }
-    // else
-    // {
-    //     // ensure the external image is not mistaken for a valid image
-    //     eraseExtFlashMetaHeader(imageProcessor->mNvsHandle);
-    // }
-
+    //cc32xxLog("OTAImageProcessorImpl::HandleFinalize");
     imageProcessor->ReleaseBlock();
-
-    ChipLogProgress(SoftwareUpdate, "OTA image downloaded");
 }
 
 void OTAImageProcessorImpl::HandleApply(intptr_t context)
 {
-    ExtImageInfo_t header;
     auto * imageProcessor = reinterpret_cast<OTAImageProcessorImpl *>(context);
     if (imageProcessor == nullptr)
     {
         return;
     }
 
-    // if (!readExtFlashMetaHeader(imageProcessor->mNvsHandle, &header))
-    // {
-    //     return;
-    // }
-    // header.fixedHdr.imgCpStat = NEED_COPY;
-
-    // writeExtFlashMetaHeader(imageProcessor->mNvsHandle, &header);
-
-    // // reset SoC to kick BIM
-    // SysCtrlSystemReset();
+    int rc = OtaArchive_commit();
+    if(rc == 0)
+    {
+        PowerCC32XX_reset(PowerCC32XX_PERIPH_WDT);
+    }
 }
 
 void OTAImageProcessorImpl::HandleAbort(intptr_t context)
@@ -395,12 +212,8 @@ void OTAImageProcessorImpl::HandleAbort(intptr_t context)
         return;
     }
 
-    // if (!eraseExtFlashMetaHeader(imageProcessor->mNvsHandle))
-    // {
-    //     imageProcessor->mDownloader->OnPreparedForDownload(CHIP_ERROR_WRITE_FAILED);
-    // }
+    OtaArchive_abort(&hOtaArchive);
 
-    // NVS_close(imageProcessor->mNvsHandle);
     imageProcessor->ReleaseBlock();
 }
 
@@ -418,38 +231,126 @@ void OTAImageProcessorImpl::HandleProcessBlock(intptr_t context)
         return;
     }
 
-    /* Save the fixed size header */
-    if (imageProcessor->mParams.downloadedBytes < sizeof(imageProcessor->mFixedOtaHeader))
-    {
-        uint8_t * header = reinterpret_cast<uint8_t *>(&(imageProcessor->mFixedOtaHeader));
-        if (imageProcessor->mBlock.size() + imageProcessor->mParams.downloadedBytes < sizeof(imageProcessor->mFixedOtaHeader))
-        {
-            // the first block is smaller than the header, somehow
-            memcpy(header + imageProcessor->mParams.downloadedBytes, imageProcessor->mBlock.data(), imageProcessor->mBlock.size());
-        }
-        else
-        {
-            // we have received the whole header, fill it up
-            memcpy(header + imageProcessor->mParams.downloadedBytes, imageProcessor->mBlock.data(),
-                   sizeof(imageProcessor->mFixedOtaHeader) - imageProcessor->mParams.downloadedBytes);
+    int         rc = 0;
+    uint32_t    nTotalProcessed = 0;
+    uint16_t    nProcessed = 0;
+    uint16_t    nUnprocessed = imageProcessor->mBlock.size();
+    // uint8_t     nProgressBarPercentStep;
+    // uint8_t     nProgressBarPercentCount;
+    // uint32_t    nProgressBarStep;
+    // uint32_t    nProgressBarNext;
+    int         otaArchiveStatus = ARCHIVE_STATUS_CONTINUE;
+    // bool        bEndOfInput = false;
 
-            // update the total size for download tracking
-            imageProcessor->mParams.totalFileBytes = imageProcessor->mFixedOtaHeader.totalSize;
-        }
+    ByteSpan block        = imageProcessor->mBlock;
+    CHIP_ERROR chip_error = imageProcessor->ProcessHeader(block);
+
+    if (chip_error != CHIP_NO_ERROR)
+    {
+        ChipLogError(SoftwareUpdate, "Matter image header parser error %s", chip::ErrorStr(chip_error));
+        imageProcessor->mDownloader->EndDownload(CHIP_ERROR_INVALID_FILE_IDENTIFIER);
+        return;
     }
 
-    /* chip::OTAImageHeaderParser can be used for processing the variable size header */
-
-    ChipLogDetail(SoftwareUpdate, "Write block %d, %d", (size_t) imageProcessor->mParams.downloadedBytes,
-                  imageProcessor->mBlock.size());
-    // if (!writeExtFlashImgPages(imageProcessor->mNvsHandle, imageProcessor->mParams.downloadedBytes, imageProcessor->mBlock))
+    
+    // /*** Initiate progress-bar params ***/
+    // if(m_ota.nImageLen)
     // {
-    //     imageProcessor->mDownloader->EndDownload(CHIP_ERROR_WRITE_FAILED);
-    //     return;
+    //     nProgressBarPercentStep = (OTA_BUFF_SIZE * 100 / m_ota.nImageLen);
+    //     if(nProgressBarPercentStep < 4)
+    //         nProgressBarPercentStep = 4;
+    //     nProgressBarStep = m_ota.nImageLen * nProgressBarPercentStep / 100;
+    //     nProgressBarNext = nProgressBarStep;
+    //     nProgressBarPercentCount = 0;
     // }
+    
+    while( rc >= 0 && nUnprocessed &&
+            (totalFileBytes == 0 || nTotalProcessed < totalFileBytes) )
+    {
+        /*** Call OtaArchive with unprocessed bytes ***/
+        cc32xxLog("ProcessOta:: Ready to process (%d)", nUnprocessed);
+        uint16_t byteProcessed;
+        otaArchiveStatus = OtaArchive_process(&hOtaArchive, imageProcessor->mBlock.data(), (int16_t)nUnprocessed, (int16_t*)&byteProcessed);
 
-    imageProcessor->mParams.downloadedBytes += imageProcessor->mBlock.size();
+        /*** Update processing counters ***/
+        nProcessed += byteProcessed;
+        nUnprocessed -= byteProcessed;
+        nTotalProcessed += byteProcessed;
+        cc32xxLog("ProcessOta:: OtaArchive status=%d, processed=%d (%d), unprocessed=%d", otaArchiveStatus, byteProcessed, nTotalProcessed, nUnprocessed);
+
+        // /*** Update (LOG) progress bar ***/
+       
+        // if(nTotalProcessed >= nProgressBarNext)
+        // {
+        //     nProgressBarNext += nProgressBarStep;
+        //     nProgressBarPercentCount += nProgressBarPercentStep;
+        //     m_ota.progressPercent = nProgressBarPercentCount;
+        //     cc32xxLog("ProcessOta: ---- Download file in progress (%02d%%) %d/%d ----", nProgressBarPercentCount, nTotalProcessed, m_ota.nImageLen);
+        // }
+        
+
+        if(otaArchiveStatus == ARCHIVE_STATUS_DOWNLOAD_DONE)
+        {
+            /*** Terminate session upon successful download completion ***/
+            nUnprocessed = 0;
+            cc32xxLog("ProcessOta: ---- Download file completed");
+            // rc = StopLoad(0);
+            //return 0;
+        }
+        else if(otaArchiveStatus < 0)
+        {
+            // int status;
+            rc = otaArchiveStatus;
+            /*** Terminate session upon OTA failure ***/
+            cc32xxLog("ProcessOta: ---- OTA failure (%d)", rc);
+
+            nUnprocessed = 0;
+            imageProcessor->mDownloader->EndDownload(CHIP_ERROR_WRITE_FAILED);
+            // status = StopLoad(rc);
+            // if (status != 0)
+            //     while(1);
+
+            //return rc;
+        }
+
+
+        // /*** Load next chunk - if  OtaArchive require more bytes,
+        //      or unprocessed count is less then half the buffer (and TotalRead < ImageLen) ***/
+        // if(otaArchiveStatus == ARCHIVE_STATUS_CONTINUE )
+        // {
+        //     /*** Verify that MCU image fits the device type ***/
+        //     if(OtaArchive_getStatus(&hOtaArchive) == ARCHIVE_STATE_OPEN_FILE)
+        //     {
+        //         rc = CheckMcuImage((char *)hOtaArchive.CurrTarObj.pFileName);
+        //         if(rc < 0)
+        //             return;
+        //         else
+        //             cc32xxLog("ProcessOta: ---- Writing file: %s", (char *)hOtaArchive.CurrTarObj.pFileName);
+        //     }
+        // }
+    }
     imageProcessor->mDownloader->FetchNextData();
+}
+
+CHIP_ERROR OTAImageProcessorImpl::ProcessHeader(ByteSpan & block)
+{
+    if (mHeaderParser.IsInitialized())
+    {
+        OTAImageHeader header;
+        CHIP_ERROR error = mHeaderParser.AccumulateAndDecode(block, header);
+
+        // Needs more data to decode the header
+        ReturnErrorCodeIf(error == CHIP_ERROR_BUFFER_TOO_SMALL, CHIP_NO_ERROR);
+        ReturnErrorOnFailure(error);
+
+        // SL TODO -- store version somewhere
+        ChipLogProgress(SoftwareUpdate, "Image Header software version: %ld payload size: %lu", header.mSoftwareVersion,
+                        (long unsigned int) header.mPayloadSize);
+        mParams.totalFileBytes = header.mPayloadSize;
+        totalFileBytes = header.mPayloadSize;
+        mHeaderParser.Clear();
+    }
+    return CHIP_NO_ERROR;
 }
 
 CHIP_ERROR OTAImageProcessorImpl::SetBlock(ByteSpan & block)
@@ -491,5 +392,60 @@ CHIP_ERROR OTAImageProcessorImpl::ReleaseBlock()
     mBlock = MutableByteSpan();
     return CHIP_NO_ERROR;
 }
+
+// int16_t StopLoad(int status)
+// {
+//     int16_t rc = m_sessionCBs[m_ota.type].fEndSession(m_ota.hSession, status);
+//     return rc;
+// }
+
+int OTA_IF_getCurrentVersion(uint8_t *pVersion)
+{
+    int16_t rc = SL_ERROR_BSD_EINVAL;
+
+    if(pVersion)
+    {
+        rc = FILE_read((int8_t*)"ota.dat", OTA_VERSION_LEN, pVersion, 0);
+        if(rc < 0)
+        {
+            memset(pVersion, '0', OTA_VERSION_LEN);
+            char fileName[] = "ota.dat";
+            rc = FILE_write(fileName, OTA_VERSION_LEN, (uint8_t*)pVersion, NULL, SL_FS_CREATE_FAILSAFE);
+            if (rc < 0)
+                while(1)
+                    ;
+        }
+    }
+    if(rc < 0){
+        cc32xxLog("FILE_read failed");
+    } 
+    return rc;
+}
+
+bool OTA_IF_isNewVersion(uint8_t *pCandidateVersion)
+{
+    bool bIsNewer;
+    uint8_t currVersion[OTA_VERSION_LEN];
+    int cmpResult = 1;
+
+    OTA_IF_getCurrentVersion(currVersion);
+#if !OTA_IF_FLAG_DISABLE_DOWNGRADE_PROTECTION
+    cmpResult = memcmp(pCandidateVersion, currVersion, OTA_VERSION_LEN);
+#endif
+
+    if(cmpResult > 0)
+    {
+        cc32xxLog("candidate version: (%.*s) is newer than current version: (%.*s)", OTA_VERSION_LEN, pCandidateVersion, OTA_VERSION_LEN, currVersion);
+        bIsNewer = true;
+    }
+    else
+    {
+        cc32xxLog("candidate version: (%.*s) is older than current version: (%.*s)", OTA_VERSION_LEN, pCandidateVersion, OTA_VERSION_LEN, currVersion);
+        bIsNewer = false;
+    }
+    return bIsNewer;
+}
+
+
 
 } // namespace chip

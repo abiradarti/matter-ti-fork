@@ -19,6 +19,7 @@
 #pragma once
 
 #include <app/clusters/ota-requestor/OTADownloader.h>
+#include <lib/core/OTAImageHeader.h>
 #include <platform/CHIPDeviceLayer.h>
 #include <platform/OTAImageProcessor.h>
 
@@ -47,6 +48,7 @@ private:
     static void HandleApply(intptr_t context);
     static void HandleAbort(intptr_t context);
     static void HandleProcessBlock(intptr_t context);
+    CHIP_ERROR ProcessHeader(ByteSpan & block);
 
     /**
      * Called to allocate memory for mBlock if necessary and set it to block
@@ -58,17 +60,13 @@ private:
      */
     CHIP_ERROR ReleaseBlock();
 
-    // NVS_Handle mNvsHandle;
-    uint16_t mMetaPage;
     MutableByteSpan mBlock;
     OTADownloader * mDownloader;
+    OTAImageHeaderParser mHeaderParser;
 
-    struct fixedOtaHeader
-    {
-        uint32_t fileIdentifier;
-        uint64_t totalSize;
-        uint32_t headerSize;
-    } PACK_STRUCT_STRUCT mFixedOtaHeader;
+    int OTA_IF_getCurrentVersion(uint8_t *pVersion);
+    int OTA_IF_isNewVersion(uint8_t *pVersion);
+    static int16_t StopLoad(int status);
 };
 
 } // namespace chip

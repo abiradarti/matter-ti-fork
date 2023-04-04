@@ -177,11 +177,13 @@ template("ti_simplelink_sdk") {
       defines += [ "DeviceFamily_CC3220" ]
 
       libs += [
-        "${ti_simplelink_sdk_root}/source/ti/drivers/lib/gcc/m4/drivers_cc32xx.a",
-        "${ti_simplelink_sdk_root}/source/ti/devices/cc32xx/driverlib/gcc/Release/driverlib.a",
         "${ti_simplelink_sdk_root}/source/ti/drivers/net/wifi/gcc/rtos/simplelink.a",
+        "${ti_simplelink_sdk_root}/source/ti/utils/json/lib/gcc/m4/json_release.a",
+        "${ti_simplelink_sdk_root}/source/ti/net/ota/gcc/Release/ota.a",
         "${ti_simplelink_sdk_root}/source/ti/net/lib/gcc/m4/slnetsock_debug.a",
         "${ti_simplelink_sdk_root}/source/ti/drivers/net/wifi/slnetif/gcc/Release/slnetifwifi.a",
+        "${ti_simplelink_sdk_root}/source/ti/drivers/lib/gcc/m4/drivers_cc32xx.a",
+        "${ti_simplelink_sdk_root}/source/ti/devices/cc32xx/driverlib/gcc/Release/driverlib.a",
       ]
       include_dirs += [
         "${ti_simplelink_sdk_root}/examples/rtos/common/",

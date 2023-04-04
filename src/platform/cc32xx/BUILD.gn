@@ -53,11 +53,8 @@ static_library("cc32xx") {
       #"oad_image_header.c",
       "OTAImageProcessorImpl.cpp",
       "OTAImageProcessorImpl.h",
-    ]
+  ]
   }
-
-  include_dirs = [ "ifmod/" ]
-  deps = []
 
   public_deps = [
     "${chip_root}/src/crypto",

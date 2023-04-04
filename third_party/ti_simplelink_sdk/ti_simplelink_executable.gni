@@ -37,7 +37,7 @@ assert(matter_software_ver_str != "",
 template("ti_simplelink_executable") {
   simplelink_target_name = target_name
 
-  if (chip_enable_ota_requestor) {
+  if (chip_enable_ota_requestor && ti_simplelink_device_family == "cc13x2x7_26x2x7") {
     # Generating the ota binary image
     final_target = "${target_name}.ota"
   } else {
@@ -194,6 +194,62 @@ template("ti_simplelink_executable") {
       }
     }
   }
+
+  #  if (chip_enable_ota_requestor &&
+  #     ti_simplelink_device_family == "cc32xx") {
+    
+  #   pw_python_action("{target_name}.tar"){
+
+  #     args += [
+  #       "project",
+  #       "create_ota",
+  #       "--name",
+  #       "{simplelink_target_name}",
+  #       "--path",
+  #       "${root_out_dir}",
+  #     ]
+
+
+  #   }
+    
+  #   pw_python_action("${target_name}.ota") {
+
+  #     script = "${chip_root}/src/app/ota_image_tool.py"
+  #     sources = [ "${root_out_dir}/${output_base_name}.tar" ]
+  #     outputs = [ "${root_out_dir}/${output_base_name}.ota" ]
+
+  #     args = [
+  #       "create",
+  #       rebase_path("${root_out_dir}/${output_base_name}.bin", root_build_dir),
+  #       rebase_path("${root_out_dir}/${output_base_name}.ota", root_build_dir),
+  #     ]
+
+  #     args += [
+  #       "-v",
+  #       matter_device_vid,
+  #       "-p",
+  #       matter_device_pid,
+  #       "-vn",
+  #       matter_software_ver,
+  #       "-vs",
+  #       matter_software_ver_str,
+  #     ]
+  #     if (defined(invoker.ota_digest)) {
+  #       args += [
+  #         "-da",
+  #         matter_ota_digest,
+  #       ]
+  #     } else {
+  #       args += [
+  #         "-da",
+  #         "sha256",
+  #       ]
+  #     }
+  #     if (defined(invoker.ota_args)) {
+  #       args += invoker.ota_args
+  #     }
+  #   }
+  # }
 
   group(simplelink_target_name) {
     data_deps = [ ":$final_target" ]

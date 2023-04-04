@@ -21,6 +21,9 @@ const MQTT1          = MQTT.addInstance();
 const SNTP           = scripting.addModule("/ti/net/SNTP");
 const SlNet          = scripting.addModule("/ti/net/SlNet", {}, false);
 const SlNet1         = SlNet.addInstance();
+const Crypto         = scripting.addModule("/ti/drivers/Crypto");
+const Crypto1        = Crypto.addInstance();
+Crypto1.$name        = "CONFIG_Crypto_0";
 
 /**
  * Write custom configuration values to the imported modules.
