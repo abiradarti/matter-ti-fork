@@ -1,0 +1,10 @@
+python create_factory_data.py -vid 1 \
+-pid 2 \
+-vendor_name "TI" \
+-product_name "example app" \
+-hw_ver_str "1" \
+-dac_priv_key example_dac_priv_key.der \
+-dac_pub_key "0x87654321" \
+-dac_cert example_dac.der \
+-pai_cert example_pai.der \
+-o factory_data.hex
