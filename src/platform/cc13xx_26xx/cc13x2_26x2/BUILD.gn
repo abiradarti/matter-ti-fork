@@ -44,6 +44,8 @@ static_library("cc13x2_26x2") {
     "KeyValueStoreManagerImpl.h",
     "PlatformManagerImpl.h",
     "SystemPlatformConfig.h",
+    "../FactoryDataProvider.h",
+    "../FactoryDataProvider.cpp"
   ]
 
   deps = []

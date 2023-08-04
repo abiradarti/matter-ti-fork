@@ -31,6 +31,8 @@
 
 #include <ti/drivers/apps/Button.h>
 
+#include <platform/cc13xx_26xx/FactoryDataProvider.h>
+
 struct Identify;
 
 class AppTask
@@ -79,11 +81,14 @@ private:
     bool mFunctionTimerActive;
 
     static AppTask sAppTask;
+
+    chip::DeviceLayer::FactoryDataProvider mFactoryDataProvider;
 };
 
 inline AppTask & GetAppTask(void)
 {
     return AppTask::sAppTask;
 }
+
 
 #endif // APP_TASK_H

@@ -1,6 +1,6 @@
 /*
  *
- *    Copyright (c) 2022 Project CHIP Authors
+ *    Copyright (c) 2023 Project CHIP Authors
  *
  *    Licensed under the Apache License, Version 2.0 (the "License");
  *    you may not use this file except in compliance with the License.
@@ -14,41 +14,45 @@
  *    See the License for the specific language governing permissions and
  *    limitations under the License.
  */
-#include "CC13X2_26X2DeviceAttestationCreds.h"
+
+#include "FactoryDataProvider.h"
 #include <crypto/CHIPCryptoPAL.h>
 #include <lib/core/CHIPError.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/Span.h>
 
-extern uint32_t __attestation_credentials_base;
+
 
 namespace chip {
-namespace Credentials {
-namespace CC13X2_26X2 {
+namespace DeviceLayer {
 
-namespace {
+    typedef struct
+    {
+        const uint32_t len;
+        uint8_t const * data;
+    } data_ptr;
 
-typedef struct
-{
-    const uint32_t len;
-    uint8_t const * data;
-} data_ptr;
+    typedef struct
+    {
+        data_ptr serial_number;
+        data_ptr vendor_id;
+        data_ptr product_id;
+        data_ptr vendor_name;
+        data_ptr product_name;
+        data_ptr manufacturing_date;
+        data_ptr hw_ver;
+        data_ptr hw_ver_str;
+        data_ptr dac_cert;
+        data_ptr dac_priv_key;
+        data_ptr pai_cert;
+        data_ptr rd_uniqueid;
+        data_ptr spake2p_it;
+        data_ptr spake2p_salt;
+        data_ptr spake2p_verifier;
+        data_ptr discriminator;
+    } factoryData;
 
-typedef struct
-{
-    // data_ptr version;
-    // data_ptr vendor_id;
-    // data_ptr product_id;
-    // data_ptr vendor_name;
-    // data_ptr product_name;
-    // data_ptr hw_ver_str;
-    data_ptr dac_priv_key;
-    data_ptr dac_pub_key;
-    data_ptr dac_cert;
-    data_ptr pai_cert;
-} factoryData;
-
-#if defined(__GNUC__)
+    #if defined(__GNUC__)
 
 const uint8_t __attribute__((section( ".dac_priv_key"))) __attribute__((used)) gDacPrivKey[] =
 #else
@@ -60,20 +64,6 @@ const uint8_t __attribute__((section( ".dac_priv_key"))) __attribute__((used)) g
 {
     0x50, 0x5a, 0x21, 0x1d, 0xbd, 0xa8, 0x71, 0x33, 0x0d, 0x63, 0x5d, 0xa3, 0xb0, 0x7e, 0xb1, 0xc5,
     0x08, 0x8a, 0x8f, 0xc7, 0x01, 0x24, 0xfb, 0xb3, 0x3e, 0x93, 0xd5, 0x06, 0x05, 0x82, 0xc7, 0xc5,
-};
-
-#if defined(__GNUC__)
-const uint8_t __attribute__((section( ".dac_pub_key"))) __attribute__((used)) gDacPubKey[] =
-#else
-
-#error "compiler currently not supported"
-
-#endif
-{
-    0x04, 0xc5, 0x65, 0xfd, 0xad, 0xfd, 0x16, 0xdd, 0x62, 0xe4, 0x3f, 0x19, 0x60, 0xb9, 0x93, 0xbb, 0x57,
-    0x2c, 0xfd, 0xd8, 0x1f, 0x6d, 0x71, 0x67, 0x67, 0x1b, 0x77, 0x45, 0xdc, 0xbe, 0x6f, 0x65, 0xaf, 0x66,
-    0x5a, 0x1d, 0x93, 0x1c, 0x05, 0xb9, 0xf9, 0xa3, 0xe9, 0x45, 0x66, 0x85, 0x60, 0x2c, 0x05, 0xc6, 0x96,
-    0x46, 0xb8, 0xf7, 0x59, 0x98, 0xdb, 0xaa, 0x68, 0x7a, 0x5c, 0x56, 0x49, 0x02, 0xda,
 };
 
 #if defined(__GNUC__)
@@ -145,27 +135,28 @@ const uint8_t __attribute__((section( ".pai_cert"))) __attribute__((used)) gPaiC
 };
 
 
-const factoryData gFactoryData =
+#if defined(__GNUC__)
+const factoryData __attribute__((section( ".factory_data_struct"))) __attribute__((used)) mFactoryData =
+#else
+
+#error "compiler currently not supported"
+
+#endif
 
 {
-    .dac_priv_key = {
-        .len = sizeof(gDacPrivKey),
-        .data = gDacPrivKey,
-    },
-    .dac_pub_key = {
-        .len = sizeof(gDacPubKey),
-        .data = gDacPubKey,
-    },
     .dac_cert = {
         .len = sizeof(gDacCert),
         .data = gDacCert,
+    },
+    .dac_priv_key = {
+        .len = sizeof(gDacPrivKey),
+        .data = gDacPrivKey,
     },
     .pai_cert = {
         .len = sizeof(gPaiCert),
         .data = gPaiCert,
     },
 };
-
 
 CHIP_ERROR LoadKeypairFromRaw(ByteSpan private_key, ByteSpan public_key, Crypto::P256Keypair & keypair)
 {
@@ -176,21 +167,12 @@ CHIP_ERROR LoadKeypairFromRaw(ByteSpan private_key, ByteSpan public_key, Crypto:
     return keypair.Deserialize(serialized_keypair);
 }
 
-class DeviceAttestationCredsCC13X2_26X2 : public DeviceAttestationCredentialsProvider
+CHIP_ERROR FactoryDataProvider::Init()
 {
+    return CHIP_NO_ERROR;
+}
 
-public:
-    CHIP_ERROR GetCertificationDeclaration(MutableByteSpan & out_buffer) override;
-    CHIP_ERROR GetFirmwareInformation(MutableByteSpan & out_firmware_info_buffer) override;
-    CHIP_ERROR GetDeviceAttestationCert(MutableByteSpan & out_buffer) override;
-    CHIP_ERROR GetProductAttestationIntermediateCert(MutableByteSpan & out_buffer) override;
-    CHIP_ERROR SignWithDeviceAttestationKey(const ByteSpan & message_to_sign, MutableByteSpan & out_buffer) override;
-
-private:
-    factoryData const * mFactoryData = &gFactoryData;
-};
-
-CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::GetCertificationDeclaration(MutableByteSpan & out_buffer)
+CHIP_ERROR FactoryDataProvider::GetCertificationDeclaration(MutableByteSpan & out_buffer)
 {
     //-> format_version = 1
     //-> vendor_id = 0xFFF1
@@ -243,56 +225,193 @@ CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::GetCertificationDeclaration(Mutabl
     return CopySpanToMutableSpan(ByteSpan{ kCdForAllExamples }, out_buffer);
 }
 
-CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::GetFirmwareInformation(MutableByteSpan & out_firmware_info_buffer)
+CHIP_ERROR FactoryDataProvider::GetFirmwareInformation(MutableByteSpan & out_firmware_info_buffer)
 {
     out_firmware_info_buffer.reduce_size(0);
 
     return CHIP_NO_ERROR;
 }
-
-CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::GetDeviceAttestationCert(MutableByteSpan & out_buffer)
+CHIP_ERROR FactoryDataProvider::GetDeviceAttestationCert(MutableByteSpan & outBuffer)
 {
-    ReturnErrorCodeIf(out_buffer.size() < mFactoryData->dac_cert.len, CHIP_ERROR_BUFFER_TOO_SMALL);
-    ReturnErrorCodeIf(!mFactoryData->dac_cert.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    ReturnErrorCodeIf(outBuffer.size() < mFactoryData.dac_cert.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.dac_cert.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(outBuffer.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    outBuffer.reduce_size(mFactoryData.dac_cert.len);
 
-    return CopySpanToMutableSpan(ByteSpan{ mFactoryData->dac_cert.data, mFactoryData->dac_cert.len }, out_buffer);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetProductAttestationIntermediateCert(MutableByteSpan & outBuffer)
+{
+    ReturnErrorCodeIf(outBuffer.size() < mFactoryData.pai_cert.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.pai_cert.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(outBuffer.data(), mFactoryData.pai_cert.data, mFactoryData.pai_cert.len);
+    outBuffer.reduce_size(mFactoryData.pai_cert.len);
+
+    return CHIP_NO_ERROR;
 }
 
-CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::GetProductAttestationIntermediateCert(MutableByteSpan & out_buffer)
-{
-    ReturnErrorCodeIf(out_buffer.size() < mFactoryData->pai_cert.len, CHIP_ERROR_BUFFER_TOO_SMALL);
-    ReturnErrorCodeIf(!mFactoryData->pai_cert.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
-
-    return CopySpanToMutableSpan(ByteSpan{ mFactoryData->pai_cert.data, mFactoryData->pai_cert.len }, out_buffer);
-}
-
-CHIP_ERROR DeviceAttestationCredsCC13X2_26X2::SignWithDeviceAttestationKey(const ByteSpan & message_to_sign,
-                                                                           MutableByteSpan & out_buffer)
+CHIP_ERROR FactoryDataProvider::SignWithDeviceAttestationKey(const ByteSpan & messageToSign, MutableByteSpan & outSignBuffer)
 {
     Crypto::P256ECDSASignature signature;
     Crypto::P256Keypair keypair;
 
-    VerifyOrReturnError(IsSpanUsable(out_buffer), CHIP_ERROR_INVALID_ARGUMENT);
-    VerifyOrReturnError(IsSpanUsable(message_to_sign), CHIP_ERROR_INVALID_ARGUMENT);
-    VerifyOrReturnError(out_buffer.size() >= signature.Capacity(), CHIP_ERROR_BUFFER_TOO_SMALL);
+    VerifyOrReturnError(IsSpanUsable(outSignBuffer), CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(IsSpanUsable(messageToSign), CHIP_ERROR_INVALID_ARGUMENT);
+    VerifyOrReturnError(outSignBuffer.size() >= signature.Capacity(), CHIP_ERROR_BUFFER_TOO_SMALL);
+
+    // Extract public key from DAC cert.
+    uint8_t dacBuf[600] = {0};
+    MutableByteSpan dacCertSpan(dacBuf);
+    memcpy(dacCertSpan.data(), mFactoryData.dac_cert.data, mFactoryData.dac_cert.len);
+    dacCertSpan.reduce_size(mFactoryData.dac_cert.len);
+    chip::Crypto::P256PublicKey dacPublicKey;
+
+    ReturnErrorOnFailure(chip::Crypto::ExtractPubkeyFromX509Cert(dacCertSpan, dacPublicKey));
 
     // In a non-exemplary implementation, the public key is not needed here. It is used here merely because
     // Crypto::P256Keypair is only (currently) constructable from raw keys if both private/public keys are present.
-    ReturnErrorOnFailure(LoadKeypairFromRaw(ByteSpan(mFactoryData->dac_priv_key.data, mFactoryData->dac_priv_key.len),
-                                            ByteSpan(mFactoryData->dac_pub_key.data, mFactoryData->dac_pub_key.len), keypair));
-    ReturnErrorOnFailure(keypair.ECDSA_sign_msg(message_to_sign.data(), message_to_sign.size(), signature));
+    // MutableByteSpan privKeySpan{const_cast<uint8_t*>(reinterpret_cast< const uint8_t *>(mFactoryData.dac_priv_key.data)), mFactoryData.dac_priv_key.len};
+    // MutableByteSpan pubKeySpan{const_cast<uint8_t*>(reinterpret_cast< const uint8_t *>(dacPublicKey.Bytes())), dacPublicKey.Length()};
 
-    return CopySpanToMutableSpan(ByteSpan{ signature.ConstBytes(), signature.Length() }, out_buffer);
+    uint8_t privKeyBuf[600] = {0};
+    MutableByteSpan privKeySpan(privKeyBuf);
+    memcpy(privKeySpan.data(), mFactoryData.dac_priv_key.data, mFactoryData.dac_priv_key.len);
+    privKeySpan.reduce_size(mFactoryData.dac_priv_key.len);
+
+    uint8_t pubKeyBuf[600] = {0};
+    MutableByteSpan pubKeySpan(pubKeyBuf);
+    memcpy(pubKeySpan.data(), dacPublicKey.Bytes(), dacPublicKey.Length());
+    pubKeySpan.reduce_size(dacPublicKey.Length());
+
+    ReturnErrorOnFailure(LoadKeypairFromRaw(privKeySpan, pubKeySpan, keypair));
+    ReturnErrorOnFailure(keypair.ECDSA_sign_msg(messageToSign.data(), messageToSign.size(), signature));
+
+    return CopySpanToMutableSpan(ByteSpan{ signature.ConstBytes(), signature.Length() }, outSignBuffer);
+
 }
-
-} // namespace
-
-DeviceAttestationCredentialsProvider * GetCC13X2_26X2DacProvider()
+CHIP_ERROR FactoryDataProvider::GetSetupDiscriminator(uint16_t & setupDiscriminator)
 {
-    static DeviceAttestationCredsCC13X2_26X2 dac_provider;
-    return &dac_provider;
+    ReturnErrorCodeIf(!mFactoryData.discriminator.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&setupDiscriminator, mFactoryData.discriminator.data, mFactoryData.discriminator.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::SetSetupDiscriminator(uint16_t setupDiscriminator)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::GetSpake2pIterationCount(uint32_t & iterationCount)
+{
+    ReturnErrorCodeIf(!mFactoryData.spake2p_it.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&iterationCount, mFactoryData.spake2p_it.data, mFactoryData.spake2p_it.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetSpake2pSalt(MutableByteSpan & saltBuf)
+{
+    ReturnErrorCodeIf(saltBuf.size() < mFactoryData.spake2p_salt.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.spake2p_salt.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(saltBuf.data(), mFactoryData.spake2p_salt.data, mFactoryData.spake2p_salt.len);
+    saltBuf.reduce_size(mFactoryData.spake2p_salt.len);
+
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetSpake2pVerifier(MutableByteSpan & verifierBuf, size_t & verifierLen)
+{
+    ReturnErrorCodeIf(verifierBuf.size() < mFactoryData.spake2p_verifier.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.spake2p_verifier.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(verifierBuf.data(), mFactoryData.spake2p_verifier.data, mFactoryData.spake2p_verifier.len);
+    verifierLen = mFactoryData.spake2p_verifier.len;
+    verifierBuf.reduce_size(verifierLen);
+
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetSetupPasscode(uint32_t & setupPasscode)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::SetSetupPasscode(uint32_t setupPasscode)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::GetVendorName(char * buf, size_t bufSize)
+{
+    //FROM FACTORY DATA
+    ReturnErrorCodeIf(bufSize < mFactoryData.vendor_name.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.vendor_name.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(buf, mFactoryData.vendor_name.data, mFactoryData.vendor_name.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetVendorId(uint16_t & vendorId)
+{
+    //FROM FACTORY DATA
+    ReturnErrorCodeIf(!mFactoryData.vendor_id.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&vendorId, mFactoryData.vendor_id.data, mFactoryData.vendor_id.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetProductName(char * buf, size_t bufSize)
+{
+    //FROM FACTORY DATA
+    ReturnErrorCodeIf(bufSize < mFactoryData.product_name.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.product_name.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(buf, mFactoryData.product_name.data, mFactoryData.product_name.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetProductId(uint16_t & productId)
+{
+    //FROM FACTORY DATA
+    ReturnErrorCodeIf(!mFactoryData.product_id.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&productId, mFactoryData.product_id.data, mFactoryData.product_id.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetPartNumber(char * buf, size_t bufSize)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::GetProductURL(char * buf, size_t bufSize)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::GetProductLabel(char * buf, size_t bufSize)
+{
+    return CHIP_ERROR_NOT_IMPLEMENTED;
+}
+CHIP_ERROR FactoryDataProvider::GetSerialNumber(char * buf, size_t bufSize)
+{
+    ReturnErrorCodeIf(bufSize < mFactoryData.serial_number.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.serial_number.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(buf, mFactoryData.serial_number.data, mFactoryData.serial_number.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetManufacturingDate(uint16_t & year, uint8_t & month, uint8_t & day)
+{
+    ReturnErrorCodeIf(!mFactoryData.manufacturing_date.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&year, mFactoryData.manufacturing_date.data, 4);
+    memcpy(&month, mFactoryData.manufacturing_date.data + 5, 2);
+    memcpy(&day, mFactoryData.manufacturing_date.data + 8, 2);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetHardwareVersion(uint16_t & hardwareVersion)
+{
+    ReturnErrorCodeIf(!mFactoryData.hw_ver.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(&hardwareVersion, mFactoryData.hw_ver.data, mFactoryData.hw_ver.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetHardwareVersionString(char * buf, size_t bufSize)
+{
+    //FROM FACTORY DATA
+    ReturnErrorCodeIf(bufSize < mFactoryData.hw_ver_str.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.hw_ver_str.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(buf, mFactoryData.hw_ver_str.data, mFactoryData.hw_ver_str.len);
+    return CHIP_NO_ERROR;
+}
+CHIP_ERROR FactoryDataProvider::GetRotatingDeviceIdUniqueId(MutableByteSpan & uniqueIdSpan)
+{
+    ReturnErrorCodeIf(uniqueIdSpan.size() < mFactoryData.rd_uniqueid.len, CHIP_ERROR_BUFFER_TOO_SMALL);
+    ReturnErrorCodeIf(!mFactoryData.rd_uniqueid.data, CHIP_ERROR_PERSISTED_STORAGE_VALUE_NOT_FOUND);
+    memcpy(uniqueIdSpan.data(), mFactoryData.rd_uniqueid.data, mFactoryData.rd_uniqueid.len);
+    uniqueIdSpan.reduce_size(mFactoryData.rd_uniqueid.len);
+
+    return CHIP_NO_ERROR;
 }
 
-} // namespace CC13X2_26X2
-} // namespace Credentials
+} // namespace DeviceLayer
 } // namespace chip
