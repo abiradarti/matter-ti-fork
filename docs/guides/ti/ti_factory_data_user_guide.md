@@ -28,7 +28,7 @@ TI matter examples allow to use the factory data in the following two ways:
 
 ### Solution Block Diagram
 
-![Block Diagram](../images/ti_factory_data_flow_chart.PNG)
+![Block Diagram](../../images/ti_factory_data_flow_chart.PNG)
 
 Below is the high level description of each element
 
@@ -51,7 +51,7 @@ Below is the high level description of each element
 
 ## Flash memory layout
 
-![Memory Layout](../images/ti_factory_data_memory_map.PNG)
+![Memory Layout](../../images/ti_factory_data_memory_map.PNG)
 
 Key Points:
 
@@ -59,11 +59,14 @@ Out of box factory data location is configured to be on second last page on the
 flash. The address starts at 0xAC000. This can be configured in the linker
 command file.
 
-To configure: 1. Linker command file: Set the start address for factory data
-![Linker snippet 1](../images/ti_linker_factory_data_1.PNG)
-![Linker snippet 2](../images/ti_linker_factory_data_2.PNG) 2.
-create_factory_data.py: Set the address of the start of the factory data
-elements. Refer to the comments in the script.
-![Factory Data creation script](../images/ti_factory_data_mem_address_script.PNG)
+To configure:
+
+1. Linker command file: Set the start address for factory data
+   ![Linker snippet 1](../../images/ti_linker_factory_data_1.PNG)
+   ![Linker snippet 2](../../images/ti_linker_factory_data_2.PNG)
+
+2. create_factory_data.py: Set the address of the start of the factory data
+   elements. Refer to the comments in the script.
+   ![Factory Data creation script](../../images/ti_factory_data_mem_address_script.PNG)
 
 It is recommended to keep a dedicated page for factory data.
