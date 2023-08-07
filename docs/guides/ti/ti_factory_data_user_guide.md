@@ -40,12 +40,12 @@ Below is the high level description of each element
 3. BIM is the Boot image manager that allows to write and read/program the OTA
    image received over the air for upgrade. This is built with the matter
    application. This does not require additional build steps from developers.
-4. Create_factory_data.py: processes JSON file and generates hex file with
+4. create_factory_data.py: processes JSON file and generates hex file with
    unique factory data values configured in the JSON file.
-5. Factory_data_trim.py: when using the custom factory data option, this script
+5. factory_data_trim.py: when using the custom factory data option, this script
    removes the dummy factory data which is required to be able to successfully
    compile the application.
-6. ad_merge_tool.py: Merges the factory data hex, matter application without
+6. oad_merge_tool.py: Merges the factory data hex, matter application without
    factory data and bim to generate a functional hex that can be programmed on
    to the device.
 
@@ -53,7 +53,7 @@ Below is the high level description of each element
 
 ![Memory Layout](../../images/ti_factory_data_memory_map.png)
 
-Key Points:
+## How to use
 
 Out of box factory data location is configured to be on second last page on the
 flash. The address starts at 0xAC000. This can be configured in the linker
@@ -70,3 +70,18 @@ To configure:
    ![Factory Data creation script](../../images/ti_factory_data_mem_address_script.png)
 
 It is recommended to keep a dedicated page for factory data.
+
+### Formatting certs and keys
+
+To format the DAC, private key and PAI has hex strings as shown in the Factory
+Data JSON file, use the chip-cert tool located at src/tools/chip-cert and run
+the _convert-cert_ command, and list -X, or X.509 DER hex encoded format, as the
+output format. These strings can then be copied into the JSON file.
+
+### Creating images
+
+The example application can be built using the instructions in the example's
+README. The factory data from the JSON file will be formatted into a hex file
+that will then be merged into the final executable. The final executable will be
+named _{example-application}-bim.hex_, and the factory data that was inputted
+into the JSON file will be named _{example-application}-factory-data.hex_.
