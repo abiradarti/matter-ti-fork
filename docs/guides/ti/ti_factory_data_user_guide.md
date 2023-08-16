@@ -28,7 +28,7 @@ TI matter examples allow to use the factory data in the following two ways:
 
 ### Solution Block Diagram
 
-![Block Diagram](../../images/ti_factory_data_flow_chart.png)
+![Block Diagram](../images/factory_data_overview.png)
 
 Below is the high level description of each element
 
@@ -51,7 +51,7 @@ Below is the high level description of each element
 
 ## Flash memory layout
 
-![Memory Layout](../../images/ti_factory_data_memory_map.png)
+![Memory Layout](../images/factory_data_mem_map.png)
 
 ## How to use
 
@@ -61,13 +61,30 @@ command file.
 
 To configure:
 
-1. Linker command file: Set the start address for factory data
-   ![Linker snippet 1](../../images/ti_linker_factory_data_1.png)
-   ![Linker snippet 2](../../images/ti_linker_factory_data_2.png)
+1. Linker command file: Set the start address for factory data in cc13x2x7_cc26x2x7_freertos_ota_factory_data.lds
+   ![Linker snippet 1](../images/ti_linker_factory_data_1.png)
+   ![Linker snippet 2](../images/ti_linker_factory_data_2.png)
 
 2. create_factory_data.py: Set the address of the start of the factory data
    elements. Refer to the comments in the script.
-   ![Factory Data creation script](../../images/ti_factory_data_mem_address_script.png)
+   ![Factory Data creation script](../images/ti_factory_data_mem_address_script.png)
+
+3. In third_party/ti_simplelink_sdk/ti_simplelink_board.gni, set custom_factory_data to true       
+   ![Custom factory data flag](../images/custom_factory_data_flag.png)            
+4. In examples/platform/CC13X2_26X2DeviceAttestationCreds.cpp, change the location of the public key, private key, DAC and PAI arrays so that they are mapped to the factory data section. 
+   ![Private key](../images/priv_key.png)
+   ![Public key](../images/pub_key.png)
+   ![DAC cert](../images/dac_cert.png)
+   ![PAI cert](../images/pai_cert.png)
+5. In the example's AppTask.h, include platform/cc13xx_26xx/FactoryDataProvider.h , and instantiate a FactoryDataProvider object.
+   ![Include FactoryDataProvider](../images/include_factorydataprovider.png)
+   ![Instantiate FactoryDataProvider](../images/instantiate_factorydataprovider.png)
+   
+6. In the example's AppTask.cpp, set the instantiated FactoryDataProvider object as the DeviceAttestationCredentialsProvider, and remove the include to examples/platform/cc13x2_26x2/CC13X2_26X2DeviceAttestationCreds.h
+   ![Set DeviceAttestationProvider](../images/set_deviceattestationcredsprovider.png)
+7. In src/platform/cc13xx_26xx/cc13x2_26x2/BUILD.gn, add FactoryDataProvider.cpp and FactoryDataProvider.h as source files in the cc13x2_26x2 static library
+   ![Static Lib Addition](../images/factorydataprovider_static_lib_addition.png)
+   
 
 It is recommended to keep a dedicated page for factory data.
 

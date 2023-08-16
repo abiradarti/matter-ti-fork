@@ -27,10 +27,11 @@ RESERVED_RAM_SIZE_BLE_ROM = 0x00000FDF;
 
 MEMORY
 {
-    /* last page removed for BIM, CCFG is supplied by that project */
+    /* last two pages removed for BIM, Flash Bootloader, and Factory Data. CCFG is supplied by the BIM project */
     /* FLASH (RX)      : ORIGIN = 0x00000000, LENGTH = 0x000affa8 */
     /* FLASH_CCFG (RX) : ORIGIN = 0x000affa8, LENGTH = 0x00000058 */
-    FLASH (RX)      : ORIGIN = 0x00000000, LENGTH = 0x000ae000
+    FLASH (RX)      : ORIGIN = 0x00000000, LENGTH = 0x000ac000
+    FLASH_FACTORY_DATA (RX)  : ORIGIN = 0x000ac000, LENGTH = 0x00000900
     /* BLE ROM reserves RAM at the beginning of the ram image, size RESERVED_RAM_SIZE_BLE_ROM */
     /* SRAM (RWX)      : ORIGIN = 0x20000000, LENGTH = 0x00024000 */
     SRAM (RWX)      : ORIGIN = 0x20000FDF, LENGTH = 0x00023021
@@ -45,6 +46,7 @@ MEMORY
 }
 
 REGION_ALIAS("REGION_TEXT", FLASH);
+REGION_ALIAS("REGION_FACTORY_DATA", FLASH_FACTORY_DATA); 
 REGION_ALIAS("REGION_BSS", SRAM);
 REGION_ALIAS("REGION_DATA", SRAM);
 REGION_ALIAS("REGION_STACK", SRAM);
@@ -76,6 +78,18 @@ SECTIONS {
     .ramVecs (_vtable_base_address) (NOLOAD) : {
         KEEP (*(.ramVecs))
     } > REGION_DATA
+
+    /* Define base address for the DAC arrays and struct */
+    PROVIDE (_factory_data_base_address =
+        DEFINED(_factory_data_base_address) ? _factory_data_base_address : 0xAC000);
+
+    .factory_data(_factory_data_base_address) : AT (_factory_data_base_address) {
+        KEEP (*(.factory_data_struct))
+        KEEP (*(.dac_priv_key))
+        KEEP (*(.dac_pub_key))
+        KEEP (*(.dac_cert))
+        KEEP (*(.pai_cert))
+    } > REGION_FACTORY_DATA 
 
     /*
      * UDMACC26XX_CONFIG_BASE below must match UDMACC26XX_CONFIG_BASE defined
@@ -236,7 +250,7 @@ SECTIONS {
     /* End of executable code/data, NVS is not part of the OTA image */
     PROVIDE (_flash_end_address = .);
 
-    .nvs (0xAA000) (NOLOAD) : AT (0xAA000) ALIGN(0x2000) {
+    .nvs (0xA8000) (NOLOAD) : AT (0xA0000) ALIGN(0x2000) {
         *(.nvs)
     } > REGION_TEXT
 

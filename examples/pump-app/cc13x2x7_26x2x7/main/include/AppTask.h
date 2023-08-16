@@ -31,7 +31,7 @@
 
 #include <ti/drivers/apps/Button.h>
 
-#include <platform/cc13xx_26xx/FactoryDataProvider.h>
+// #include <platform/cc13xx_26xx/FactoryDataProvider.h>
 
 struct Identify;
 
@@ -82,7 +82,7 @@ private:
 
     static AppTask sAppTask;
 
-    chip::DeviceLayer::FactoryDataProvider mFactoryDataProvider;
+    // chip::DeviceLayer::FactoryDataProvider mFactoryDataProvider;
 };
 
 inline AppTask & GetAppTask(void)
